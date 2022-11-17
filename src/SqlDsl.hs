@@ -9,6 +9,7 @@ module SqlDsl where
 import Control.Monad.State
 import Data.Kind
 import Data.List
+import Control.Applicative
 
 class Symantics r where
   data Repr r :: Type -> Type
@@ -47,28 +48,35 @@ class Symantics r => SymanticsOpen r where
 
 data R
 
+-- Somehow this cannot be derived??
+instance Applicative (Repr R) where
+  pure = ReprIdentity
+
+  f <*> x = ReprIdentity (unReprIdentity f (unReprIdentity x))
+
 instance Symantics R where
   newtype Repr R a = ReprIdentity {unReprIdentity :: a}
+    deriving Functor
 
-  int = ReprIdentity
-  bool = ReprIdentity
-  string = ReprIdentity
+  int = pure
+  bool = pure
+  string = pure
 
   foreach (ReprIdentity ls) f = ReprIdentity (concatMap (unReprIdentity . f . ReprIdentity) ls)
   where_ (ReprIdentity True) rows = rows
-  where_ (ReprIdentity False) _ = ReprIdentity []
+  where_ (ReprIdentity False) _ = pure []
 
-  yield (ReprIdentity x) = ReprIdentity [x]
-  nil = ReprIdentity []
+  yield (ReprIdentity x) = pure [x]
+  nil = pure []
 
-  (ReprIdentity x) =% (ReprIdentity y) = ReprIdentity (x == y)
+  (=%) = liftA2 (==)
 
   newtype Obs R a = ObsIdentity {unObsIdentity :: a}
   observe (ReprIdentity a) = ObsIdentity a
 
 instance SymanticsOpen R where
   lam f = ReprIdentity (unReprIdentity . f . ReprIdentity)
-  app (ReprIdentity f) (ReprIdentity x) = ReprIdentity (f x)
+  app = (<*>)
 
 -- SQL interpreter (will likely need one per backend obviously)
 
