@@ -6,12 +6,12 @@
 -- See https://okmij.org/ftp/meta-programming/quel.pdf
 module SqlDsl where
 
+import Control.Applicative
 import Control.Monad.State
 import Data.Kind
 import Data.List
-import Control.Applicative
 
-class Symantics r where
+class (Num (Repr r Int)) => Symantics r where
   data Repr r :: Type -> Type
 
   -- TODO: Delegate to separate type class.
@@ -44,6 +44,58 @@ class Symantics r => SymanticsOpen r where
   lam :: (Repr r a -> Repr r b) -> Repr r (a -> b)
   app :: Repr r (a -> b) -> Repr r a -> Repr r b
 
+-- * Optimization passes
+
+-- Rule ForFor
+
+data ForFor r
+
+instance (Symantics r) => Num (Repr (ForFor r) Int) where
+  (+) x y = Unknown ((+) (dyn x) (dyn y))
+  (*) x y = Unknown ((*) (dyn x) (dyn y))
+  abs = Unknown . abs . dyn
+  signum = Unknown . signum . dyn
+  fromInteger = dyn . fromInteger
+  negate = Unknown . negate . dyn
+
+instance Symantics r => Symantics (ForFor r) where
+  data Repr (ForFor r) a where
+    ForEach :: Repr (ForFor r) [a] -> (Repr (ForFor r) a -> Repr (ForFor r) [b]) -> Repr (ForFor r) [b]
+    Unknown :: Repr r a -> Repr (ForFor r) a
+
+  int = Unknown . int
+  bool = Unknown . bool
+  string = Unknown . string
+
+  {-
+
+     foreach (foreach L (\y -> M)) (\x -> N)
+
+   ~~~>
+
+     foreach L (\y -> foreach M (\x -> N))
+
+     -}
+  foreach s _N = case s of
+    Unknown {} -> ForEach s _N
+    ForEach _L _M ->
+      Unknown $ foreach (dyn _L) (\y -> foreach (dyn $ _M $ Unknown y) (dyn . _N . Unknown))
+
+  where_ cond body = Unknown $ where_ (dyn cond) (dyn body)
+  yield y = Unknown $ yield (dyn y)
+  nil = Unknown nil
+
+  (=%) a b = Unknown $ (=%) (dyn a) (dyn b)
+
+  newtype Obs (ForFor r) a = ObsForFor {unObsForFor :: Obs r a}
+  observe = ObsForFor . observe . dyn
+
+dyn :: Symantics r => Repr (ForFor r) a -> Repr r a
+dyn (Unknown u) = u
+dyn (ForEach f b) = foreach (dyn f) (dyn . b . Unknown)
+
+-- ForWhere1 is the next thing needed to normalize q3, I think.
+
 -- Meta-circular interpreter:
 
 data R
@@ -54,9 +106,17 @@ instance Applicative (Repr R) where
 
   f <*> x = ReprIdentity (unReprIdentity f (unReprIdentity x))
 
+instance Num (Repr R Int) where
+  (+) = liftA2 (+)
+  (*) = liftA2 (*)
+  abs = fmap abs
+  signum = fmap signum
+  fromInteger = ReprIdentity . fromInteger
+  negate = fmap negate
+
 instance Symantics R where
   newtype Repr R a = ReprIdentity {unReprIdentity :: a}
-    deriving Functor
+    deriving (Functor)
 
   int = pure
   bool = pure
@@ -87,38 +147,89 @@ data SqlQuote
   = SqlSelect
       { sqlSelectFrom :: [SqlQuote],
         sqlSelectProj :: [SqlQuote],
-        sqlSelectWhere :: SqlQuote
+        sqlSelectWhere :: [SqlQuote]
       }
-  | SqlFromAlias SqlQuote String
+  | -- | SqlTable String [String]
+    SqlFromAlias SqlQuote String
   | SqlExpAnd SqlQuote SqlQuote
   | SqlExpEq SqlQuote SqlQuote
   | SqlExpInt Int
   | SqlExpBool Bool
+  | SqlExpOp String SqlQuote SqlQuote
+  | SqlExpFunApp String [SqlQuote]
   | SqlExpString String
   | SqlExpVar String
+  | SqlMakeLabels [(String, SqlQuote)] -- ⟨l=B⟩
   | SqlProjTable String
   | SqlProjCol SqlQuote String
+  | SqlProjAlias SqlQuote String
   deriving (Show)
 
-ppSqlQuote :: SqlQuote -> String
-ppSqlQuote = \case
+ppSqlQuote :: Int -> SqlQuote -> String
+ppSqlQuote prec = \case
   SqlSelect {..} ->
-    "SELECT "
-      ++ intercalate ", " (map ppSqlQuote sqlSelectProj)
-      ++ " FROM ("
-      ++ intercalate "), (" (map ppSqlQuote sqlSelectFrom)
-      ++ ") WHERE "
-      ++ ppSqlQuote sqlSelectWhere
-  SqlFromAlias f a -> ppSqlQuote f ++ " AS " ++ a
-  SqlExpAnd x1 x2 -> ppSqlQuote x1 ++ " AND " ++ ppSqlQuote x2
-  SqlExpEq x1 x2 -> ppSqlQuote x1 ++ " = " ++ ppSqlQuote x2
+    parenIndent prec 0 $
+      "SELECT "
+        ++ intercalate ", " (map (ppSqlQuote 1) sqlSelectProj)
+        ++ " "
+        ++ concat
+          [ "FROM "
+              ++ intercalate ", " (map (ppSqlQuote 1) sqlSelectFrom)
+            | not $ null sqlSelectFrom
+          ]
+        ++ " "
+        ++ concat
+          [ "WHERE "
+              ++ ppSqlQuote 1 (foldr1 SqlExpAnd sqlSelectWhere)
+            | not $ null sqlSelectWhere
+          ]
+  -- SqlTable table _cols -> parenIndent prec 0 $ "SELECT * FROM " ++ table
+  SqlFromAlias f a -> ppSqlQuote prec f ++ " AS " ++ a
+  SqlExpAnd x1 x2 -> ppSqlQuote prec x1 ++ " AND " ++ ppSqlQuote prec x2
+  SqlExpEq x1 x2 -> ppSqlQuote prec x1 ++ " = " ++ ppSqlQuote prec x2
   SqlExpInt i -> show i
   SqlExpBool b -> show b
+  SqlExpOp op x y -> ppSqlQuote prec x ++ " " ++ op ++ " " ++ ppSqlQuote prec y
+  SqlExpFunApp f args -> f ++ "(" ++ intercalate ", " (map (ppSqlQuote 0) args) ++ ")"
   SqlExpString s -> show s
   SqlExpVar s -> s ++ ".*"
+  SqlMakeLabels labels -> intercalate ", " (map (\(l, exp') -> ppSqlQuote prec exp' ++ " AS " ++ l) labels)
+  SqlProjAlias t alias -> ppSqlQuote prec t ++ " AS " ++ alias
   SqlProjTable t -> t
   SqlProjCol (SqlExpVar t) c -> t ++ "." ++ c
-  SqlProjCol tExp c -> "(" ++ ppSqlQuote tExp ++ ")." ++ c -- We should be able to model this case away
+  SqlProjCol tExp c -> ppSqlQuote 1 tExp ++ c -- We should be able to model this case away
+
+indent :: Int -> String -> String
+indent n = unlines . map (replicate n ' ' ++) . lines
+
+parenIndent :: Int -> Int -> String -> String
+parenIndent outerPrec innerPrec str | outerPrec > innerPrec = "\n(\n" ++ indent 2 str ++ ")\n"
+parenIndent _ _ str = str
+
+paren :: Int -> Int -> String -> String
+paren outerPrec innerPrec str | outerPrec > innerPrec = "(" ++ str ++ ")"
+paren _ _ str = str
+
+instance Num (Repr Sql Int) where
+  (+) x y = ReprSql $ do
+    x' <- unReprSql x
+    y' <- unReprSql y
+    return $ SqlExpOp "+" x' y'
+  (-) x y = ReprSql $ do
+    x' <- unReprSql x
+    y' <- unReprSql y
+    return $ SqlExpOp "-" x' y'
+  (*) x y = ReprSql $ do
+    x' <- unReprSql x
+    y' <- unReprSql y
+    return $ SqlExpOp "*" x' y'
+  abs x = ReprSql $ do
+    x' <- unReprSql x
+    return $ SqlExpFunApp "abs" [x']
+  signum x = ReprSql $ do
+    x' <- unReprSql x
+    return $ SqlExpFunApp "signum" [x']
+  fromInteger = int . fromInteger
 
 instance Symantics Sql where
   newtype Repr Sql a = ReprSql {unReprSql :: State Int SqlQuote}
@@ -132,14 +243,25 @@ instance Symantics Sql where
     x <- freshVar
     b <- unReprSql (body (ReprSql (return (SqlExpVar x))))
 
+    f' <- case f of
+      -- This is a bit awkward. In terms of th paper, 
+      -- we cannot match on "for (x <- table(..) F'",
+      -- because all we have is "for S[[B]] S[[F']]".
+      -- We would have been able to, if we had made "Repr Sql a" an initial
+      -- encoding of the language and then done the translation into SqlQuote
+      -- in "observe". This would also have made "SqlQuote" cleaner.
+      SqlSelect {sqlSelectFrom = [SqlProjTable t]} ->
+        return (SqlProjTable t)
+      --unexpected -> return unexpected
+      unexpected -> error $ "Non-normalized argument to 'foreach' table: " ++ show unexpected
     return $ case b of
-      SqlSelect {sqlSelectFrom = f', sqlSelectProj = p', sqlSelectWhere = w'} ->
+      SqlSelect {sqlSelectFrom = f'', sqlSelectProj = p', sqlSelectWhere = w'} ->
         SqlSelect
-          { sqlSelectFrom = SqlFromAlias f x : f',
+          { sqlSelectFrom = SqlFromAlias f' x : f'',
             sqlSelectProj = p',
             sqlSelectWhere = w'
           }
-      err -> error $ "Incoherent argument to 'foreach: " ++ show err
+      err -> error $ "Non-normalized argument to 'foreach' body: " ++ show err
 
   yield x = ReprSql $ do
     x' <- unReprSql x
@@ -147,7 +269,7 @@ instance Symantics Sql where
       SqlSelect
         { sqlSelectFrom = [],
           sqlSelectProj = [x'],
-          sqlSelectWhere = SqlExpBool True
+          sqlSelectWhere = []
         }
 
   where_ cond body = ReprSql $ do
@@ -159,11 +281,11 @@ instance Symantics Sql where
           SqlSelect
             { sqlSelectFrom = f,
               sqlSelectProj = p,
-              sqlSelectWhere = w `SqlExpAnd` cond'
+              sqlSelectWhere = cond' : w
             }
       err -> error $ "Incoherent argument to 'where_': " ++ show err
 
-  nil = ReprSql $ return $ SqlSelect [] [] (SqlExpBool False)
+  nil = ReprSql $ return $ SqlSelect [] [] [SqlExpBool False]
 
   (=%) x y = ReprSql $ do
     x' <- unReprSql x
@@ -174,7 +296,7 @@ instance Symantics Sql where
 
   observe q =
     let q' = flip evalState 0 $ unReprSql q
-     in ObsSql $ ppSqlQuote q'
+     in ObsSql $ ppSqlQuote 0 q'
 
 freshVar :: State Int String
 freshVar = do
@@ -220,8 +342,7 @@ freshVar = do
 --  +----------------------+  +-----------------+
 
 class Symantics r => MyExampleSchema r where
-  data Product r :: Type
-  data Order r :: Type
+  type Product r :: Type
 
   products :: Repr r [Product r]
 
@@ -229,83 +350,151 @@ class Symantics r => MyExampleSchema r where
   product_name :: Repr r (Product r) -> Repr r String
   product_price :: Repr r (Product r) -> Repr r Int
 
+  type Order r :: Type
+
   orders :: Repr r [Order r]
 
   order_oid :: Repr r (Order r) -> Repr r Int
   order_pid :: Repr r (Order r) -> Repr r Int
   order_qty :: Repr r (Order r) -> Repr r Int
 
+  type Sales r :: Type
+
+  mkSales :: Repr r Int -> Repr r String -> Repr r Int -> Repr r (Sales r)
+
 -- * Meta-circular interpreter of the schema. Can only use a constant db. Interesting.
 
+--
+data ProductR = ProductR
+  { productPid :: Int,
+    productName :: String,
+    productPrice :: Int
+  }
+  deriving (Show)
+
+data OrderR = OrderR
+  { orderOid :: Int,
+    orderPid :: Int,
+    orderQty :: Int
+  }
+  deriving (Show)
+
+data SalesR = SalesR
+  { salesPid :: Int,
+    salesName :: String,
+    salesSale :: Int
+  }
+  deriving (Show)
+
 instance MyExampleSchema R where
-  data Product R = ProductRow
-    { productPid :: Int,
-      productName :: String,
-      productPrice :: Int
-    }
-    deriving (Show)
-  data Order R = OrderRow
-    { orderOid :: Int,
-      orderPid :: Int,
-      orderQty :: Int
-    }
-    deriving (Show)
+  type Product R = ProductR
 
   products =
     ReprIdentity
-      [ ProductRow 1 "Tablet" 500,
-        ProductRow 2 "Laptop" 1000,
-        ProductRow 3 "Desktop" 1000,
-        ProductRow 4 "Router" 150,
-        ProductRow 5 "HDD" 100,
-        ProductRow 6 "SSD" 500
+      [ ProductR 1 "Tablet" 500,
+        ProductR 2 "Laptop" 1000,
+        ProductR 3 "Desktop" 1000,
+        ProductR 4 "Router" 150,
+        ProductR 5 "HDD" 100,
+        ProductR 6 "SSD" 500
       ]
 
   product_pid = ReprIdentity . productPid . unReprIdentity
   product_name = ReprIdentity . productName . unReprIdentity
   product_price = ReprIdentity . productPrice . unReprIdentity
 
+  type Order R = OrderR
+
   orders =
     ReprIdentity
-      [ OrderRow 1 1 5,
-        OrderRow 1 2 5,
-        OrderRow 1 4 2,
-        OrderRow 2 5 10,
-        OrderRow 2 6 20,
-        OrderRow 3 2 50
+      [ OrderR 1 1 5,
+        OrderR 1 2 5,
+        OrderR 1 4 2,
+        OrderR 2 5 10,
+        OrderR 2 6 20,
+        OrderR 3 2 50
       ]
 
   order_oid = ReprIdentity . orderOid . unReprIdentity
   order_pid = ReprIdentity . orderPid . unReprIdentity
   order_qty = ReprIdentity . orderQty . unReprIdentity
 
+  type Sales R = SalesR
+
+  mkSales pid name sale = ReprIdentity $ SalesR (unReprIdentity pid) (unReprIdentity name) (unReprIdentity sale)
+
+-- * ForFor interpreter for MyExampleSchema
+
+instance (MyExampleSchema r) => MyExampleSchema (ForFor r) where
+  type Product (ForFor r) = Product r
+  products = Unknown products
+
+  product_pid = Unknown . product_pid . dyn
+  product_name = Unknown . product_name . dyn
+  product_price = Unknown . product_price . dyn
+
+  type Order (ForFor r) = Order r
+
+  orders = Unknown orders
+
+  order_oid = Unknown . order_oid . dyn
+  order_pid = Unknown . order_pid . dyn
+  order_qty = Unknown . order_qty . dyn
+
+  type Sales (ForFor r) = Sales r
+
+  mkSales pid name sale = Unknown $ mkSales (dyn pid) (dyn name) (dyn sale)
+
 -- * Sql interpreter for MyExampleSchema
 
 instance MyExampleSchema Sql where
-  data Product Sql = Product
-  data Order Sql = Order
+  type Product Sql = ()
 
-  products = table "products"
+  products = declareTable "products" ["pid", "name", "price"]
 
   product_pid = projCol "pid"
   product_name = projCol "name"
   product_price = projCol "price"
 
-  orders = table "orders"
+  type Order Sql = ()
+
+  orders = declareTable "orders" ["oid", "pid", "qty"]
 
   order_oid = projCol "oid"
   order_pid = projCol "pid"
   order_qty = projCol "qty"
 
-table :: String -> Repr Sql a
-table tableName =
-  ReprSql $ do
-    x <- freshVar
+  type Sales Sql = ()
+
+  mkSales pid name sale = ReprSql $ do
+    pid' <- unReprSql pid
+    name' <- unReprSql name
+    sale' <- unReprSql sale
+    return $
+      -- TODO: Actually model ⟨l=B, ..⟩ in AST!
+      SqlMakeLabels [("pid", pid'), ("name", name'), ("sale", sale')]
+
+{-
+ SqlSelect
+   { sqlSelectFrom = [],
+     sqlSelectProj =
+       [ SqlProjAlias pid' "pid",
+         SqlProjAlias name' "name",
+         SqlProjAlias sale' "sale"
+       ],
+     sqlSelectWhere = []
+   }
+   -}
+
+declareTable :: String -> [String] -> Repr Sql a
+-- declareTable tableName cols = ReprSql $ return $ SqlTable tableName cols
+declareTable tableName cols =
+  ReprSql $
     return $
       SqlSelect
-        { sqlSelectFrom = [SqlFromAlias (SqlProjTable tableName) x ],
-          sqlSelectProj = [SqlExpVar x],
-          sqlSelectWhere = SqlExpBool True
+        { sqlSelectFrom = [SqlProjTable tableName],
+          sqlSelectProj = [SqlProjCol (SqlExpVar tableName) col | col <- cols],
+          sqlSelectWhere = []
         }
 
 projCol :: String -> Repr Sql a -> Repr Sql b
@@ -318,5 +507,20 @@ q1 oid' =
   foreach orders \order ->
     where_ (int oid' =% order_oid order) (yield order)
 
-test :: [Order R]
-test = unReprIdentity (q1 1)
+q2 :: (MyExampleSchema r, Symantics r) => Repr r (Order r) -> Repr r [Sales r]
+q2 o = foreach products \p ->
+  where_
+    (product_pid p =% order_pid o)
+    ( yield
+        ( mkSales
+            (product_pid p)
+            (product_name p)
+            (product_price p * order_qty o)
+        )
+    )
+
+q3 :: (MyExampleSchema r, Symantics r) => Int -> Repr r [Sales r]
+q3 oid' = foreach (q1 oid') q2
+
+test :: [Sales R]
+test = unReprIdentity (q3 1)
