@@ -49,6 +49,13 @@ foreach
         yield ⟨pid = x2.pid, name = x2.name, sale = x2.price * x1.qty⟩
 
 ghci>
+ghci> putStrLn $ unObsSql   $ observe $ q3 1
+SELECT x2.pid AS pid, x2.name AS name, x2.price * x1.qty AS sale FROM
+(
+  SELECT x0.* FROM orders AS x0 WHERE 1 = x0.oid
+)
+ AS x1, products AS x2 WHERE x2.pid = x1.pid
+ghci>
 ghci>
 ghci> putStrLn $ unObsHsGen . unObsForFor  $ observe $ q3 1
 foreach table(orders) λx0 ->
@@ -62,6 +69,14 @@ foreach table(orders) λx0 ->
 
 ghci>
 ghci>
+ghci> putStrLn $ unObsSql . unObsForFor $ observe $ q3 1
+SELECT x2.pid AS pid, x2.name AS name, x2.price * x1.qty AS sale FROM orders AS x0,
+(
+  SELECT x0.*  WHERE 1 = x0.oid
+)
+ AS x1, products AS x2 WHERE x2.pid = x1.pid
+ghci>
+ghci>
 ghci> putStrLn $ unObsHsGen . unObsForWhere1 . unObsForFor  $ observe $ q3 1
 foreach table(orders) λx0 ->
   where_ 1 =% x0.oid
@@ -70,6 +85,13 @@ foreach table(orders) λx0 ->
         where_ x2.pid =% x1.pid
           yield ⟨pid = x2.pid, name = x2.name, sale = x2.price * x1.qty⟩
 
+ghci>
+ghci> putStrLn $ unObsSql . unObsForWhere1  . unObsForFor   $ observe $ q3 1
+SELECT x2.pid AS pid, x2.name AS name, x2.price * x1.qty AS sale FROM orders AS x0,
+(
+  SELECT x0.*
+)
+ AS x1, products AS x2 WHERE 1 = x0.oid AND x2.pid = x1.pid
 ghci>
 ghci>
 ghci> putStrLn $ unObsHsGen . unObsForYield . unObsForWhere1 . unObsForFor $ observe $ q3 1
@@ -84,6 +106,6 @@ ghci>
 ghci> putStrLn $ unObsSql . unObsForYield . unObsForWhere1 . unObsForFor $ observe $ q3 1
 SELECT x1.pid AS pid, x1.name AS name, x1.price * x0.qty AS sale FROM orders AS x0, products AS x1 WHERE 1 = x0.oid AND x1.pid = x0.pid
 ghci>
-ghc
+ghci>
 
 ```
