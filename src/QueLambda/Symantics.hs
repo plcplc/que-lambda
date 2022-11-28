@@ -74,6 +74,10 @@ class (Num (Repr r Int)) => Symantics (r :: Type) where
   default (=%) :: (UnliftRepr r s, LiftRepr r s, Eq a) => Repr r a -> Repr r a -> Repr r Bool
   (=%) x y = liftRepr ((=%) (unliftRepr x) (unliftRepr y))
 
+  and_ :: Repr r Bool -> Repr r Bool -> Repr r Bool
+  default and_ :: (LiftRepr r s, UnliftRepr r s) => Repr r Bool -> Repr r Bool -> Repr r Bool
+  and_ x y = liftRepr $ and_ (unliftRepr x) (unliftRepr y)
+
   {- Omitting numerical ops, set union, and loads more -}
 
   data Obs r :: Type -> Type

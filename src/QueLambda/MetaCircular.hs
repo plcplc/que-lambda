@@ -37,6 +37,8 @@ instance Symantics R where
 
   (=%) = liftA2 (==)
 
+  and_ (ReprIdentity x) (ReprIdentity y) = pure (x && y)
+
   newtype Obs R a = ObsIdentity {unObsIdentity :: a}
   observe (ReprIdentity a) = ObsIdentity a
 

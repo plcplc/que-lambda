@@ -44,6 +44,8 @@ instance Symantics HsGen where
 
   (=%) x y = coerce $ HsOp "=%" (coerce x) (coerce y)
 
+  and_ x y = coerce $ HsOp "∧" (coerce x) (coerce y)
+
   newtype Obs HsGen a = ObsHsGen {unObsHsGen :: String}
   observe = ObsHsGen . flip evalState 0 . ppHsQuote 1 . unReprHsGen
 

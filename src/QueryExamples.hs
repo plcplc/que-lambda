@@ -200,7 +200,7 @@ instance (MyExampleSchema r) => MyExampleSchema (ForYield r) where
 instance MyExampleSchema Sql where
   type Product Sql = ()
 
-  products = declareTable "products" ["pid", "name", "price"]
+  products = declareTable "products" -- ["pid", "name", "price"]
 
   product_pid = projCol "pid"
   product_name = projCol "name"
@@ -208,7 +208,7 @@ instance MyExampleSchema Sql where
 
   type Order Sql = ()
 
-  orders = declareTable "orders" ["oid", "pid", "qty"]
+  orders = declareTable "orders" -- ["oid", "pid", "qty"]
 
   order_oid = projCol "oid"
   order_pid = projCol "pid"
@@ -217,15 +217,15 @@ instance MyExampleSchema Sql where
   type Sales Sql = ()
 
   mkSales pid name sale = ReprSql $ do
-    pid' <- unReprSql pid
-    name' <- unReprSql name
-    sale' <- unReprSql sale
+    pid' <- refinePrimitive pid
+    name' <- refinePrimitive name
+    sale' <- refinePrimitive sale
     return $
-      -- TODO: Actually model ⟨l=B, ..⟩ in AST!
-      SqlMakeLabels [("pid", pid'), ("name", name'), ("sale", sale')]
+      Record $ NqlRecordCon [("pid", pid'), ("name", name'), ("sale", sale')]
 
-declareTable :: String -> [String] -> Repr Sql a
--- declareTable tableName cols = ReprSql $ return $ SqlTable tableName cols
+declareTable :: String -> {-[String] ->-} Repr Sql a
+declareTable tableName = ReprSql $ return $ Body $ NqlTable tableName
+{-
 declareTable tableName cols =
   ReprSql $
     return $
@@ -234,11 +234,15 @@ declareTable tableName cols =
           sqlSelectProj = [SqlProjCol (SqlExpVar tableName) col | col <- cols],
           sqlSelectWhere = []
         }
+        -}
 
 projCol :: String -> Repr Sql a -> Repr Sql b
-projCol col tableAlias = ReprSql $ do
-  tableAlias' <- unReprSql tableAlias
-  return $ SqlProjCol tableAlias' col
+projCol col tableExp = ReprSql $ do
+  tableAlias' <- unReprSql tableExp
+  tableAlias <- case tableAlias' of
+    Record (NqlVar tableAlias) -> return tableAlias
+    _ -> throwError "Unnormalized argument to : `projCol col tableExp`: `tableExp'` was not a variable!"
+  return $ Primitives $ NqlRecordProj tableAlias col
 
 -- * HsGen interpreter for MyExampleSchema
 
