@@ -27,6 +27,8 @@ library
       QueLambda.Optimizations.ForFor
       QueLambda.Optimizations.ForWhere1
       QueLambda.Optimizations.ForYield
+      QueLambda.Optimizations.WhereFor
+      QueLambda.Optimizations.WhereWhere
       QueLambda.Symantics
       QueryExamples
 

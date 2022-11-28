@@ -8,7 +8,10 @@ import QueLambda.MetaCircular
 import QueLambda.Optimizations.ForFor as ForFor
 import QueLambda.Optimizations.ForWhere1 as ForWhere1
 import QueLambda.Optimizations.ForYield as ForYield
+import QueLambda.Optimizations.WhereFor as WhereFor
+import QueLambda.Optimizations.WhereWhere as WhereWhere
 import QueLambda.Symantics
+import Control.Monad.Except
 
 -- * Schema mapping
 
@@ -170,6 +173,50 @@ instance (MyExampleSchema r) => MyExampleSchema (ForWhere1 r) where
   order_qty = liftRepr . order_qty . unliftRepr
 
   type Sales (ForWhere1 r) = Sales r
+
+  mkSales pid name sale = liftRepr $ mkSales (unliftRepr pid) (unliftRepr name) (unliftRepr sale)
+
+-- * WhereFor interpreter for MyExampleSchema
+
+instance (MyExampleSchema r) => MyExampleSchema (WhereFor r) where
+  type Product (WhereFor r) = Product r
+  products = liftRepr products
+
+  product_pid = liftRepr . product_pid . unliftRepr
+  product_name = liftRepr . product_name . unliftRepr
+  product_price = liftRepr . product_price . unliftRepr
+
+  type Order (WhereFor r) = Order r
+
+  orders = liftRepr orders
+
+  order_oid = liftRepr . order_oid . unliftRepr
+  order_pid = liftRepr . order_pid . unliftRepr
+  order_qty = liftRepr . order_qty . unliftRepr
+
+  type Sales (WhereFor r) = Sales r
+
+  mkSales pid name sale = liftRepr $ mkSales (unliftRepr pid) (unliftRepr name) (unliftRepr sale)
+
+-- * WhereWhere interpreter for MyExampleSchema
+
+instance (MyExampleSchema r) => MyExampleSchema (WhereWhere r) where
+  type Product (WhereWhere r) = Product r
+  products = liftRepr products
+
+  product_pid = liftRepr . product_pid . unliftRepr
+  product_name = liftRepr . product_name . unliftRepr
+  product_price = liftRepr . product_price . unliftRepr
+
+  type Order (WhereWhere r) = Order r
+
+  orders = liftRepr orders
+
+  order_oid = liftRepr . order_oid . unliftRepr
+  order_pid = liftRepr . order_pid . unliftRepr
+  order_qty = liftRepr . order_qty . unliftRepr
+
+  type Sales (WhereWhere r) = Sales r
 
   mkSales pid name sale = liftRepr $ mkSales (unliftRepr pid) (unliftRepr name) (unliftRepr sale)
 
