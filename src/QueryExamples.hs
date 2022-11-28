@@ -1,7 +1,7 @@
 module QueryExamples where
 
+import Control.Monad.Except
 import Data.Coerce
-import Data.Kind
 import QueLambda.GenSql
 import QueLambda.Hs
 import QueLambda.MetaCircular
@@ -11,7 +11,6 @@ import QueLambda.Optimizations.ForYield as ForYield
 import QueLambda.Optimizations.WhereFor as WhereFor
 import QueLambda.Optimizations.WhereWhere as WhereWhere
 import QueLambda.Symantics
-import Control.Monad.Except
 
 -- * Schema mapping
 
@@ -50,238 +49,138 @@ import Control.Monad.Except
 --  | 6   | SSD     | 500  |  | 3   | 2   | 50  |
 --  +----------------------+  +-----------------+
 
-class Symantics r => MyExampleSchema r where
-  type Product r :: Type
+type SchemaIndifferent r s =
+  ( UnliftRepr r s,
+    LiftRepr r s,
+    MyExampleSchema s
+  )
 
-  products :: Repr r [Product r]
-
-  product_pid :: Repr r (Product r) -> Repr r Int
-  product_name :: Repr r (Product r) -> Repr r String
-  product_price :: Repr r (Product r) -> Repr r Int
-
-  type Order r :: Type
-
-  orders :: Repr r [Order r]
-
-  order_oid :: Repr r (Order r) -> Repr r Int
-  order_pid :: Repr r (Order r) -> Repr r Int
-  order_qty :: Repr r (Order r) -> Repr r Int
-
-  type Sales r :: Type
-
-  mkSales :: Repr r Int -> Repr r String -> Repr r Int -> Repr r (Sales r)
-
--- * Meta-circular interpreter of the schema. Can only use a constant db. Interesting.
-
---
-data ProductR = ProductR
+data Product = Product
   { productPid :: Int,
     productName :: String,
     productPrice :: Int
   }
   deriving (Show)
 
-data OrderR = OrderR
+data Order = Order
   { orderOid :: Int,
     orderPid :: Int,
     orderQty :: Int
   }
   deriving (Show)
 
-data SalesR = SalesR
+data Sales = Sales
   { salesPid :: Int,
     salesName :: String,
     salesSale :: Int
   }
   deriving (Show)
 
-instance MyExampleSchema R where
-  type Product R = ProductR
+class Symantics r => MyExampleSchema r where
+  products :: Repr r [Product]
+  default products :: SchemaIndifferent r s => Repr r [Product]
+  products = liftRepr products
 
+  product_pid :: Repr r Product -> Repr r Int
+  default product_pid :: SchemaIndifferent r s => Repr r Product -> Repr r Int
+  product_pid = liftRepr . product_pid . unliftRepr
+
+  product_name :: Repr r Product -> Repr r String
+  default product_name :: SchemaIndifferent r s => Repr r Product -> Repr r String
+  product_name = liftRepr . product_name . unliftRepr
+
+  product_price :: Repr r Product -> Repr r Int
+  default product_price :: SchemaIndifferent r s => Repr r Product -> Repr r Int
+  product_price = liftRepr . product_price . unliftRepr
+
+  orders :: Repr r [Order]
+  default orders :: SchemaIndifferent r s => Repr r [Order]
+  orders = liftRepr orders
+
+  order_oid :: Repr r Order -> Repr r Int
+  default order_oid :: SchemaIndifferent r s => Repr r Order -> Repr r Int
+  order_oid = liftRepr . order_oid . unliftRepr
+
+  order_pid :: Repr r Order -> Repr r Int
+  default order_pid :: SchemaIndifferent r s => Repr r Order -> Repr r Int
+  order_pid = liftRepr . order_pid . unliftRepr
+
+  order_qty :: Repr r Order -> Repr r Int
+  default order_qty :: SchemaIndifferent r s => Repr r Order -> Repr r Int
+  order_qty = liftRepr . order_qty . unliftRepr
+
+  mkSales :: Repr r Int -> Repr r String -> Repr r Int -> Repr r Sales
+  default mkSales :: SchemaIndifferent r s => Repr r Int -> Repr r String -> Repr r Int -> Repr r Sales
+  mkSales pid name sale = liftRepr $ mkSales (unliftRepr pid) (unliftRepr name) (unliftRepr sale)
+
+-- * Meta-circular interpreter of the schema. Can only use a constant db. Interesting.
+
+--
+
+instance MyExampleSchema R where
   products =
     ReprIdentity
-      [ ProductR 1 "Tablet" 500,
-        ProductR 2 "Laptop" 1000,
-        ProductR 3 "Desktop" 1000,
-        ProductR 4 "Router" 150,
-        ProductR 5 "HDD" 100,
-        ProductR 6 "SSD" 500
+      [ Product 1 "Tablet" 500,
+        Product 2 "Laptop" 1000,
+        Product 3 "Desktop" 1000,
+        Product 4 "Router" 150,
+        Product 5 "HDD" 100,
+        Product 6 "SSD" 500
       ]
 
   product_pid = ReprIdentity . productPid . unReprIdentity
   product_name = ReprIdentity . productName . unReprIdentity
   product_price = ReprIdentity . productPrice . unReprIdentity
 
-  type Order R = OrderR
-
   orders =
     ReprIdentity
-      [ OrderR 1 1 5,
-        OrderR 1 2 5,
-        OrderR 1 4 2,
-        OrderR 2 5 10,
-        OrderR 2 6 20,
-        OrderR 3 2 50
+      [ Order 1 1 5,
+        Order 1 2 5,
+        Order 1 4 2,
+        Order 2 5 10,
+        Order 2 6 20,
+        Order 3 2 50
       ]
 
   order_oid = ReprIdentity . orderOid . unReprIdentity
   order_pid = ReprIdentity . orderPid . unReprIdentity
   order_qty = ReprIdentity . orderQty . unReprIdentity
 
-  type Sales R = SalesR
+  mkSales pid name sale = ReprIdentity $ Sales (unReprIdentity pid) (unReprIdentity name) (unReprIdentity sale)
 
-  mkSales pid name sale = ReprIdentity $ SalesR (unReprIdentity pid) (unReprIdentity name) (unReprIdentity sale)
+-- Optimization pass instances for MyExampleSchema
 
--- * ForFor interpreter for MyExampleSchema
-
-instance (MyExampleSchema r) => MyExampleSchema (ForFor r) where
-  type Product (ForFor r) = Product r
-  products = liftRepr products
-
-  product_pid = liftRepr . product_pid . unliftRepr
-  product_name = liftRepr . product_name . unliftRepr
-  product_price = liftRepr . product_price . unliftRepr
-
-  type Order (ForFor r) = Order r
-
-  orders = liftRepr orders
-
-  order_oid = liftRepr . order_oid . unliftRepr
-  order_pid = liftRepr . order_pid . unliftRepr
-  order_qty = liftRepr . order_qty . unliftRepr
-
-  type Sales (ForFor r) = Sales r
-
-  mkSales pid name sale = liftRepr $ mkSales (unliftRepr pid) (unliftRepr name) (unliftRepr sale)
-
--- * ForWhere1 interpreter for MyExampleSchema
-
-instance (MyExampleSchema r) => MyExampleSchema (ForWhere1 r) where
-  type Product (ForWhere1 r) = Product r
-  products = liftRepr products
-
-  product_pid = liftRepr . product_pid . unliftRepr
-  product_name = liftRepr . product_name . unliftRepr
-  product_price = liftRepr . product_price . unliftRepr
-
-  type Order (ForWhere1 r) = Order r
-
-  orders = liftRepr orders
-
-  order_oid = liftRepr . order_oid . unliftRepr
-  order_pid = liftRepr . order_pid . unliftRepr
-  order_qty = liftRepr . order_qty . unliftRepr
-
-  type Sales (ForWhere1 r) = Sales r
-
-  mkSales pid name sale = liftRepr $ mkSales (unliftRepr pid) (unliftRepr name) (unliftRepr sale)
-
--- * WhereFor interpreter for MyExampleSchema
-
-instance (MyExampleSchema r) => MyExampleSchema (WhereFor r) where
-  type Product (WhereFor r) = Product r
-  products = liftRepr products
-
-  product_pid = liftRepr . product_pid . unliftRepr
-  product_name = liftRepr . product_name . unliftRepr
-  product_price = liftRepr . product_price . unliftRepr
-
-  type Order (WhereFor r) = Order r
-
-  orders = liftRepr orders
-
-  order_oid = liftRepr . order_oid . unliftRepr
-  order_pid = liftRepr . order_pid . unliftRepr
-  order_qty = liftRepr . order_qty . unliftRepr
-
-  type Sales (WhereFor r) = Sales r
-
-  mkSales pid name sale = liftRepr $ mkSales (unliftRepr pid) (unliftRepr name) (unliftRepr sale)
-
--- * WhereWhere interpreter for MyExampleSchema
-
-instance (MyExampleSchema r) => MyExampleSchema (WhereWhere r) where
-  type Product (WhereWhere r) = Product r
-  products = liftRepr products
-
-  product_pid = liftRepr . product_pid . unliftRepr
-  product_name = liftRepr . product_name . unliftRepr
-  product_price = liftRepr . product_price . unliftRepr
-
-  type Order (WhereWhere r) = Order r
-
-  orders = liftRepr orders
-
-  order_oid = liftRepr . order_oid . unliftRepr
-  order_pid = liftRepr . order_pid . unliftRepr
-  order_qty = liftRepr . order_qty . unliftRepr
-
-  type Sales (WhereWhere r) = Sales r
-
-  mkSales pid name sale = liftRepr $ mkSales (unliftRepr pid) (unliftRepr name) (unliftRepr sale)
-
--- * ForYield interpreter for MyExampleSchema
-
-instance (MyExampleSchema r) => MyExampleSchema (ForYield r) where
-  type Product (ForYield r) = Product r
-  products = liftRepr products
-
-  product_pid = liftRepr . product_pid . unliftRepr
-  product_name = liftRepr . product_name . unliftRepr
-  product_price = liftRepr . product_price . unliftRepr
-
-  type Order (ForYield r) = Order r
-
-  orders = liftRepr orders
-
-  order_oid = liftRepr . order_oid . unliftRepr
-  order_pid = liftRepr . order_pid . unliftRepr
-  order_qty = liftRepr . order_qty . unliftRepr
-
-  type Sales (ForYield r) = Sales r
-
-  mkSales pid name sale = liftRepr $ mkSales (unliftRepr pid) (unliftRepr name) (unliftRepr sale)
+instance (MyExampleSchema r) => MyExampleSchema (ForFor r)
+instance (MyExampleSchema r) => MyExampleSchema (ForWhere1 r)
+instance (MyExampleSchema r) => MyExampleSchema (WhereFor r)
+instance (MyExampleSchema r) => MyExampleSchema (WhereWhere r)
+instance (MyExampleSchema r) => MyExampleSchema (ForYield r)
 
 -- * Sql interpreter for MyExampleSchema
 
 instance MyExampleSchema Sql where
-  type Product Sql = ()
-
-  products = declareTable "products" -- ["pid", "name", "price"]
+  products = declareTable "products"
 
   product_pid = projCol "pid"
   product_name = projCol "name"
   product_price = projCol "price"
 
-  type Order Sql = ()
-
-  orders = declareTable "orders" -- ["oid", "pid", "qty"]
+  orders = declareTable "orders"
 
   order_oid = projCol "oid"
   order_pid = projCol "pid"
   order_qty = projCol "qty"
-
-  type Sales Sql = ()
 
   mkSales pid name sale = ReprSql $ do
     pid' <- refinePrimitive pid
     name' <- refinePrimitive name
     sale' <- refinePrimitive sale
     return $
-      Record $ NqlRecordCon [("pid", pid'), ("name", name'), ("sale", sale')]
+      Record $
+        NqlRecordCon [("pid", pid'), ("name", name'), ("sale", sale')]
 
-declareTable :: String -> {-[String] ->-} Repr Sql a
+declareTable :: String -> Repr Sql a
 declareTable tableName = ReprSql $ return $ Body $ NqlTable tableName
-{-
-declareTable tableName cols =
-  ReprSql $
-    return $
-      SqlSelect
-        { sqlSelectFrom = [SqlProjTable tableName],
-          sqlSelectProj = [SqlProjCol (SqlExpVar tableName) col | col <- cols],
-          sqlSelectWhere = []
-        }
-        -}
 
 projCol :: String -> Repr Sql a -> Repr Sql b
 projCol col tableExp = ReprSql $ do
@@ -294,23 +193,17 @@ projCol col tableExp = ReprSql $ do
 -- * HsGen interpreter for MyExampleSchema
 
 instance MyExampleSchema HsGen where
-  type Product HsGen = ()
-
   products = ReprHsGen $ HsTable "products"
 
   product_pid b = ReprHsGen $ HsProjBag (coerce b) "pid"
   product_name b = ReprHsGen $ HsProjBag (coerce b) "name"
   product_price b = ReprHsGen $ HsProjBag (coerce b) "price"
 
-  type Order HsGen = ()
-
   orders = ReprHsGen $ HsTable "orders"
 
   order_oid b = ReprHsGen $ HsProjBag (coerce b) "oid"
   order_pid b = ReprHsGen $ HsProjBag (coerce b) "pid"
   order_qty b = ReprHsGen $ HsProjBag (coerce b) "qty"
-
-  type Sales HsGen = ()
 
   mkSales pid name sale =
     ReprHsGen $
@@ -322,12 +215,12 @@ instance MyExampleSchema HsGen where
 
 -- Queries
 
-q1 :: (MyExampleSchema r, Symantics r) => Int -> Repr r [Order r]
+q1 :: (MyExampleSchema r, Symantics r) => Int -> Repr r [Order]
 q1 oid' =
   foreach orders \order ->
     where_ (int oid' =% order_oid order) (yield order)
 
-q2 :: (MyExampleSchema r, Symantics r) => Repr r (Order r) -> Repr r [Sales r]
+q2 :: (MyExampleSchema r, Symantics r) => Repr r Order -> Repr r [Sales]
 q2 o = foreach products \p ->
   where_
     (product_pid p =% order_pid o)
@@ -339,8 +232,8 @@ q2 o = foreach products \p ->
         )
     )
 
-q3 :: (MyExampleSchema r, Symantics r) => Int -> Repr r [Sales r]
+q3 :: (MyExampleSchema r, Symantics r) => Int -> Repr r [Sales]
 q3 oid' = foreach (q1 oid') q2
 
-test :: [Sales R]
+test :: [Sales]
 test = unReprIdentity (q3 1)
