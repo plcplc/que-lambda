@@ -41,9 +41,12 @@ library
     default-extensions:
       BlockArguments
       DefaultSignatures
+      DerivingStrategies
+      DerivingVia
       FunctionalDependencies
       LambdaCase
       RecordWildCards
+      StandaloneDeriving
       TypeFamilies
 
 test-suite que-lambda-test

@@ -1,3 +1,4 @@
+{-# LANGUAGE QuantifiedConstraints #-}
 -- See https://okmij.org/ftp/meta-programming/quel.pdf
 {-# LANGUAGE UndecidableInstances #-}
 
@@ -11,21 +12,40 @@ class Symantics s => LiftRepr (r :: Type) s | r -> s where
 class Symantics s => UnliftRepr (r :: Type) s | r -> s where
   unliftRepr :: Repr r a -> Repr s a
 
-newtype LiftedNum r = LiftedNum {unliftedNum :: r}
+-- | Type alias to relieve the deriving clause from the somewhat convoluted
+-- incantation of the instance context.
+type SymanticNum :: (Type -> Type) -> Type -> Type -> Constraint
+type SymanticNum r s a =
+  (Symantics s, Num (Repr s a)) => Num (Repr (r s) a)
 
+-- | Newtype to drive DerivingVia for deriving 'Num' instances.
+newtype LiftedNum a = LiftedNum {unliftedNum :: a}
+
+-- | 'Num' instance, which is suitable to use with 'DerivingVia':
+--
+-- For some concrete type R where 'Symantics s => Symantics (R s)':
+--
+--    deriving via
+--      LiftedNum (Repr (R (s :: Type)) Int)
+--      instance
+--        SymanticNum R s Int
+--
+-- Note that, without the kind signature '(s :: Type), this fails in GHC 9.2.4
+-- with the dreaded "No skolem info" error, see
+-- https://gitlab.haskell.org/ghc/ghc/-/issues/22302.
 instance
   ( UnliftRepr (r s) s,
     LiftRepr (r s) s,
-    Num (Repr s Int)
+    Num (Repr s a)
   ) =>
-  Num (LiftedNum (Repr (r s) Int))
+  Num (LiftedNum (Repr (r s) a))
   where
   (+) x y = LiftedNum $ liftRepr ((+) (unliftRepr (unliftedNum x)) (unliftRepr (unliftedNum y)))
   (*) x y = LiftedNum $ liftRepr ((*) (unliftRepr (unliftedNum x)) (unliftRepr (unliftedNum y)))
   abs x = LiftedNum $ liftRepr $ abs (unliftRepr $ unliftedNum x)
-  signum = LiftedNum . liftRepr . signum . unliftRepr. unliftedNum
+  signum = LiftedNum . liftRepr . signum . unliftRepr . unliftedNum
   fromInteger = LiftedNum . liftRepr . fromInteger
-  negate = LiftedNum . liftRepr .  negate . unliftRepr . unliftedNum
+  negate = LiftedNum . liftRepr . negate . unliftRepr . unliftedNum
 
 class (Num (Repr r Int)) => Symantics (r :: Type) where
   data Repr r :: Type -> Type

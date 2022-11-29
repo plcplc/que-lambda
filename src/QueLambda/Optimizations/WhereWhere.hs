@@ -1,18 +1,15 @@
 -- See https://okmij.org/ftp/meta-programming/quel.pdf
 module QueLambda.Optimizations.WhereWhere where
 
+import Data.Kind
 import QueLambda.Symantics
 
 data WhereWhere r
 
--- We really should be able to use deriving-via for this :-/
-instance (Symantics r) => Num (Repr (WhereWhere r) Int) where
-  (+) x y = Unknown ((+) (dyn x) (dyn y))
-  (*) x y = Unknown ((*) (dyn x) (dyn y))
-  abs = Unknown . abs . dyn
-  signum = Unknown . signum . dyn
-  fromInteger = dyn . fromInteger
-  negate = Unknown . negate . dyn
+deriving via
+  LiftedNum (Repr (WhereWhere (r :: Type)) Int)
+  instance
+    SymanticNum WhereWhere r Int
 
 instance (Symantics s) => LiftRepr (WhereWhere s) s where
   liftRepr = Unknown
@@ -37,7 +34,7 @@ instance Symantics r => Symantics (WhereWhere r) where
   where_ cond body =
     case body of
       Where cond' b -> where_ (cond `and_` cond') b
-      Unknown{} -> Where cond body
+      Unknown {} -> Where cond body
 
   newtype Obs (WhereWhere r) a = ObsWhereWhere {unObsWhereWhere :: Obs r a}
   observe = ObsWhereWhere . observe . dyn

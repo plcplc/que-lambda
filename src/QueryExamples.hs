@@ -49,12 +49,6 @@ import QueLambda.Symantics
 --  | 6   | SSD     | 500  |  | 3   | 2   | 50  |
 --  +----------------------+  +-----------------+
 
-type SchemaIndifferent r s =
-  ( UnliftRepr r s,
-    LiftRepr r s,
-    MyExampleSchema s
-  )
-
 data Product = Product
   { productPid :: Int,
     productName :: String,
@@ -75,6 +69,12 @@ data Sales = Sales
     salesSale :: Int
   }
   deriving (Show)
+
+type SchemaIndifferent r s =
+  ( UnliftRepr r s,
+    LiftRepr r s,
+    MyExampleSchema s
+  )
 
 class Symantics r => MyExampleSchema r where
   products :: Repr r [Product]
@@ -115,8 +115,6 @@ class Symantics r => MyExampleSchema r where
 
 -- * Meta-circular interpreter of the schema. Can only use a constant db. Interesting.
 
---
-
 instance MyExampleSchema R where
   products =
     ReprIdentity
@@ -150,11 +148,17 @@ instance MyExampleSchema R where
 
 -- Optimization pass instances for MyExampleSchema
 
-instance (MyExampleSchema r) => MyExampleSchema (ForFor r)
-instance (MyExampleSchema r) => MyExampleSchema (ForWhere1 r)
-instance (MyExampleSchema r) => MyExampleSchema (WhereFor r)
-instance (MyExampleSchema r) => MyExampleSchema (WhereWhere r)
-instance (MyExampleSchema r) => MyExampleSchema (ForYield r)
+-- (These are all SchemaIndifferent, so the default implementations will do)
+
+instance MyExampleSchema r => MyExampleSchema (ForFor r)
+
+instance MyExampleSchema r => MyExampleSchema (ForWhere1 r)
+
+instance MyExampleSchema r => MyExampleSchema (ForYield r)
+
+instance MyExampleSchema r => MyExampleSchema (WhereFor r)
+
+instance MyExampleSchema r => MyExampleSchema (WhereWhere r)
 
 -- * Sql interpreter for MyExampleSchema
 

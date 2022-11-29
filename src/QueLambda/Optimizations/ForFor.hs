@@ -1,33 +1,22 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 
 module QueLambda.Optimizations.ForFor where
 
+import Data.Kind
 import QueLambda.Symantics
 
 data ForFor r
 
-instance (Symantics r) => Num (Repr (ForFor r) Int) where
-  (+) x y = Unknown ((+) (dyn x) (dyn y))
-  (*) x y = Unknown ((*) (dyn x) (dyn y))
-  abs = Unknown . abs . dyn
-  signum = Unknown . signum . dyn
-  fromInteger = dyn . fromInteger
-  negate = Unknown . negate . dyn
+deriving via
+  LiftedNum (Repr (ForFor (r :: Type)) Int)
+  instance
+    SymanticNum ForFor r Int
 
 instance (Symantics s) => LiftRepr (ForFor s) s where
   liftRepr = Unknown
 
 instance (Symantics s) => UnliftRepr (ForFor s) s where
   unliftRepr = dyn
-
-{-
-I can't get this working :-/
-deriving via
-  LiftedNum (Repr (ForFor r) Int)
-  instance Num (Repr (ForFor r) Int)
-  -}
 
 instance (Symantics r) => Symantics (ForFor r) where
   data Repr (ForFor r) a where

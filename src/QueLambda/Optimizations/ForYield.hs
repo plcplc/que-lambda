@@ -1,16 +1,14 @@
 module QueLambda.Optimizations.ForYield where
 
+import Data.Kind
 import QueLambda.Symantics
 
 data ForYield r
 
-instance (Symantics r) => Num (Repr (ForYield r) Int) where
-  (+) x y = Unknown ((+) (dyn x) (dyn y))
-  (*) x y = Unknown ((*) (dyn x) (dyn y))
-  abs = Unknown . abs . dyn
-  signum = Unknown . signum . dyn
-  fromInteger = dyn . fromInteger
-  negate = Unknown . negate . dyn
+deriving via
+  LiftedNum (Repr (ForYield (r :: Type)) Int)
+  instance
+    SymanticNum ForYield r Int
 
 instance (Symantics s) => LiftRepr (ForYield s) s where
   liftRepr = Unknown

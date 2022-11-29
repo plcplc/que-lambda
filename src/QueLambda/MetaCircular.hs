@@ -3,22 +3,16 @@ module QueLambda.MetaCircular where
 
 import Control.Applicative
 import QueLambda.Symantics
+import Data.Coerce
 
 data R
 
 -- Somehow this cannot be derived??
 instance Applicative (Repr R) where
-  pure = ReprIdentity
+  pure = coerce
+  (<*>) = coerce
 
-  f <*> x = ReprIdentity (unReprIdentity f (unReprIdentity x))
-
-instance Num (Repr R Int) where
-  (+) = liftA2 (+)
-  (*) = liftA2 (*)
-  abs = fmap abs
-  signum = fmap signum
-  fromInteger = ReprIdentity . fromInteger
-  negate = fmap negate
+deriving via Int instance Num (Repr R Int)
 
 instance Symantics R where
   newtype Repr R a = ReprIdentity {unReprIdentity :: a}
