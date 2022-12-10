@@ -256,3 +256,22 @@ qAgg = foreach orders \o ->
     ( seqDecon \gOid _ ->
         gyield (gpair gOid (gsum (order_qty o)))
     )
+
+qAggHaving ::
+  (MyExampleSchema r, SymanticsG r) =>
+  Repr
+    r
+    [ Coll
+        r
+        (Int, Int)
+        (Int, Int)
+        (Int, ())
+        ((ConstK r, ConstK r), (ConstK r, SumK r))
+    ]
+qAggHaving = foreach orders \o ->
+  group
+    (seqOne $ order_oid o)
+    ( seqDecon \gOid _ ->
+        having (gOid %> gint 3)
+          (gyield (gpair gOid (gsum (order_qty o))))
+    )

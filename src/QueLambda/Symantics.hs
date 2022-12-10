@@ -153,3 +153,5 @@ class Symantics r => SymanticsG r where
   gsum :: Repr r Int -> GRepr r Int Int (SumK r)
 
   gpair :: (Show a, Show b) => GRepr r a b1 k1 -> GRepr r b b2 k2 -> GRepr r (a, b) (b1, b2) (k1, k2)
+
+  (%>) :: GRepr r Int b1 k1 -> GRepr r Int b2 k2 -> GRepr r Bool (b1, b2) (k1, k2)
