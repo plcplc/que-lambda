@@ -239,5 +239,20 @@ q2 o = foreach products \p ->
 q3 :: (MyExampleSchema r, Symantics r) => Int -> Repr r [Sales]
 q3 oid' = foreach (q1 oid') q2
 
-test :: [Sales]
-test = unReprIdentity (q3 1)
+qAgg ::
+  (MyExampleSchema r, SymanticsG r) =>
+  Repr
+    r
+    [ Coll
+        r
+        (Int, Int)
+        (Int, Int)
+        (Int, ())
+        (ConstK r, SumK r)
+    ]
+qAgg = foreach orders \o ->
+  group
+    (seqOne $ order_oid o)
+    ( seqDecon \gOid _ ->
+        gyield (gpair gOid (gsum (order_qty o)))
+    )

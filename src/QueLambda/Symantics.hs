@@ -112,3 +112,44 @@ class (Num (Repr r Int)) => Symantics (r :: Type) where
 class Symantics r => SymanticsOpen r where
   lam :: (Repr r a -> Repr r b) -> Repr r (a -> b)
   app :: Repr r (a -> b) -> Repr r a -> Repr r b
+
+class Symantics r => SymanticsG r where
+  data ConstK r :: Type
+  data SumK r :: Type
+
+  data GRepr r :: Type -> Type -> Type -> Type
+  data GRes r :: Type -> Type -> Type -> Type
+
+  data Coll r :: Type -> Type -> Type -> Type -> Type
+
+  data GBSequence r :: Type -> Type
+  data GBKeySequence r :: Type -> Type
+
+  seqOne :: Show a => Repr r a -> GBSequence r (a, ())
+
+  seqNext :: Show a => Repr r a -> GBSequence r b -> GBSequence r (a, b)
+
+  seqDecon ::
+    ( GRepr r a a (ConstK r) ->
+      GBKeySequence r b ->
+      w
+    ) ->
+    GBKeySequence r (a, b) ->
+    w
+
+  group ::
+    GBSequence r gk ->
+    (GBKeySequence r gk -> GRes r a b res) ->
+    Repr r [Coll r a b gk res]
+
+  having ::
+    GRepr r Bool b1 k1 -> GRes r a b2 k2 -> GRes r a (b1, b2) (k1, k2)
+
+  gyield ::
+    GRepr r a b key -> GRes r a b key
+
+  gint :: Int -> GRepr r Int Int (ConstK r)
+
+  gsum :: Repr r Int -> GRepr r Int Int (SumK r)
+
+  gpair :: (Show a, Show b) => GRepr r a b1 k1 -> GRepr r b b2 k2 -> GRepr r (a, b) (b1, b2) (k1, k2)
