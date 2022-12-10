@@ -65,12 +65,12 @@ ppSqlStatementQuote
     parenIndent
       prec
       0
-      ( "SELECT "
-          ++ ppSqlProjectionsQuote projs
-          ++ " FROM "
-          ++ intercalate ", " (map ppSqlFromQuote froms)
-          ++ " WHERE "
-          ++ intercalate " AND " (map (ppSqlExpressionQuote 0) conds)
+      ( "SELECT\n"
+          ++ indent 2 (ppSqlProjectionsQuote projs)
+          ++ "FROM\n"
+          ++ indent 2 (intercalate ",\n" (map ppSqlFromQuote froms))
+          ++ "WHERE\n"
+          ++ indent 2 (intercalate " AND " (map (ppSqlExpressionQuote 0) conds))
       )
 
 ppSqlExpressionQuote :: Int -> SqlExpressionQuote -> String
@@ -94,7 +94,7 @@ ppSqlFromQuote = \case
 
 ppSqlProjectionsQuote :: SqlProjectionsQuote -> String
 ppSqlProjectionsQuote = \case
-  SqlProjectionsAliased aliased -> intercalate ", " (map (\(ex, alias) -> ppSqlExpressionQuote 1 ex ++ " AS " ++ alias) aliased)
+  SqlProjectionsAliased aliased -> intercalate ",\n" (map (\(ex, alias) -> ppSqlExpressionQuote 1 ex ++ " AS " ++ alias) aliased)
   SqlProjectionNull -> "NULL"
   SqlProjectionStar table -> table ++ ".*"
 
