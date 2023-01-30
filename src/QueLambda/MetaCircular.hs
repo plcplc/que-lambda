@@ -43,8 +43,11 @@ instance SymanticsOpen R where
   app = (<*>)
 
 deriving instance Show (GRepr R a b key)
+
 deriving instance Show (GRes R a b key)
+
 deriving instance Show (GBSequence R a)
+
 deriving instance Show (Coll R a b g key)
 
 instance SymanticsG R where
@@ -53,7 +56,12 @@ instance SymanticsG R where
 
   data GRepr R a b key where
     GReprRConst :: Show a => Repr R a -> GRepr R a a (ConstK R) -- Too strong?
-    GReprRPair :: (Show a, Show b) =>
+    GReprRLessThan ::
+      GRepr R Int b1 k1 ->
+      GRepr R Int b2 k2 ->
+      GRepr R Bool (b1, b2) (k1, k2)
+    GReprRPair ::
+      (Show a, Show b) =>
       GRepr R a b1 k1 ->
       GRepr R b b2 k2 ->
       GRepr R (a, b) (b1, b2) (k1, k2)
@@ -66,9 +74,9 @@ instance SymanticsG R where
       GRes R a b2 k2 ->
       GRes R a (b1, b2) (k1, k2)
 
-  data Coll R a b g k = CollR {
-    collGroupKey :: GBSequence R g,
-    collGroupRes :: GRes R a b k
+  data Coll R a b g k = CollR
+    { collGroupKey :: GBSequence R g,
+      collGroupRes :: GRes R a b k
     }
 
   data GBSequence R a where
@@ -103,3 +111,4 @@ instance SymanticsG R where
   gint = GReprRConst . int
   gsum = GReprRSum
   gpair = GReprRPair
+  (%>) = GReprRLessThan

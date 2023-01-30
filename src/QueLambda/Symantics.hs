@@ -16,7 +16,10 @@ class Symantics s => UnliftRepr (r :: Type) s | r -> s where
 -- incantation of the instance context.
 type SymanticNum :: (Type -> Type) -> Type -> Type -> Constraint
 type SymanticNum r s a =
-  (Symantics s, Num (Repr s a)) => Num (Repr (r s) a)
+  ( Symantics s,
+    Num (Repr s a)
+  ) =>
+  Num (Repr (r s) a)
 
 -- | Newtype to drive DerivingVia for deriving 'Num' instances.
 newtype LiftedNum a = LiftedNum {unliftedNum :: a}
