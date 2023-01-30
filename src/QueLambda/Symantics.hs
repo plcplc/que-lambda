@@ -120,10 +120,10 @@ class Symantics r => SymanticsG r where
   data ConstK r :: Type
   data SumK r :: Type
 
-  data GRepr r :: Type -> Type -> Type -> Type
-  data GRes r :: Type -> Type -> Type -> Type
+  data GRepr r :: Type -> Type -> Type
+  data GRes r :: Type -> Type -> Type
 
-  data Coll r :: Type -> Type -> Type -> Type -> Type
+  data Coll r :: Type -> Type -> Type -> Type
 
   data GBSequence r :: Type -> Type
   data GBKeySequence r :: Type -> Type
@@ -133,7 +133,7 @@ class Symantics r => SymanticsG r where
   seqNext :: Show a => Repr r a -> GBSequence r b -> GBSequence r (a, b)
 
   seqDecon ::
-    ( GRepr r a a (ConstK r) ->
+    ( GRepr r a (ConstK r) ->
       GBKeySequence r b ->
       w
     ) ->
@@ -142,19 +142,19 @@ class Symantics r => SymanticsG r where
 
   group ::
     GBSequence r gk ->
-    (GBKeySequence r gk -> GRes r a b res) ->
-    Repr r [Coll r a b gk res]
+    (GBKeySequence r gk -> GRes r a res) ->
+    Repr r [Coll r a gk res]
 
   having ::
-    GRepr r Bool b1 k1 -> GRes r a b2 k2 -> GRes r a (b1, b2) (k1, k2)
+    GRepr r Bool k1 -> GRes r a k2 -> GRes r a (k1, k2)
 
   gyield ::
-    GRepr r a b key -> GRes r a b key
+    GRepr r a key -> GRes r a key
 
-  gint :: Int -> GRepr r Int Int (ConstK r)
+  gint :: Int -> GRepr r Int (ConstK r)
 
-  gsum :: Repr r Int -> GRepr r Int Int (SumK r)
+  gsum :: Repr r Int -> GRepr r Int (SumK r)
 
-  gpair :: (Show a, Show b) => GRepr r a b1 k1 -> GRepr r b b2 k2 -> GRepr r (a, b) (b1, b2) (k1, k2)
+  gpair :: (Show a, Show b) => GRepr r a k1 -> GRepr r b k2 -> GRepr r (a, b) (k1, k2)
 
-  (%>) :: GRepr r Int b1 k1 -> GRepr r Int b2 k2 -> GRepr r Bool (b1, b2) (k1, k2)
+  (%>) :: GRepr r Int k1 -> GRepr r Int k2 -> GRepr r Bool (k1, k2)

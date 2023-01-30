@@ -246,7 +246,6 @@ qAgg ::
     [ Coll
         r
         (Int, Int)
-        (Int, Int)
         (Int, ())
         (ConstK r, SumK r)
     ]
@@ -264,7 +263,6 @@ qAggHaving ::
     [ Coll
         r
         (Int, Int)
-        ((Int, Int), (Int, Int))
         (Int, ())
         ((ConstK r, ConstK r), (ConstK r, SumK r))
     ]

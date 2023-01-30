@@ -42,41 +42,41 @@ instance SymanticsOpen R where
   lam f = ReprIdentity (unReprIdentity . f . ReprIdentity)
   app = (<*>)
 
-deriving instance Show (GRepr R a b key)
+deriving instance Show (GRepr R a key)
 
-deriving instance Show (GRes R a b key)
+deriving instance Show (GRes R a key)
 
 deriving instance Show (GBSequence R a)
 
-deriving instance Show (Coll R a b g key)
+deriving instance Show (Coll R a g key)
 
 instance SymanticsG R where
   data ConstK R = ConstKR
   data SumK R = SumKR
 
-  data GRepr R a b key where
-    GReprRConst :: Show a => Repr R a -> GRepr R a a (ConstK R) -- Too strong?
+  data GRepr R a key where
+    GReprRConst :: Show a => Repr R a -> GRepr R a (ConstK R) -- Too strong?
     GReprRLessThan ::
-      GRepr R Int b1 k1 ->
-      GRepr R Int b2 k2 ->
-      GRepr R Bool (b1, b2) (k1, k2)
+      GRepr R Int k1 ->
+      GRepr R Int k2 ->
+      GRepr R Bool  (k1, k2)
     GReprRPair ::
       (Show a, Show b) =>
-      GRepr R a b1 k1 ->
-      GRepr R b b2 k2 ->
-      GRepr R (a, b) (b1, b2) (k1, k2)
-    GReprRSum :: Repr R Int -> GRepr R Int Int (SumK R)
+      GRepr R a k1 ->
+      GRepr R b k2 ->
+      GRepr R (a, b)  (k1, k2)
+    GReprRSum :: Repr R Int -> GRepr R Int (SumK R)
 
-  data GRes R a b key where
-    GResRYield :: GRepr R a b key -> GRes R a b key
+  data GRes R a key where
+    GResRYield :: GRepr R a key -> GRes R a key
     GResRHaving ::
-      GRepr R Bool b1 k1 ->
-      GRes R a b2 k2 ->
-      GRes R a (b1, b2) (k1, k2)
+      GRepr R Bool k1 ->
+      GRes R a k2 ->
+      GRes R a (k1, k2)
 
-  data Coll R a b g k = CollR
+  data Coll R a g k = CollR
     { collGroupKey :: GBSequence R g,
-      collGroupRes :: GRes R a b k
+      collGroupRes :: GRes R a k
     }
 
   data GBSequence R a where
@@ -86,7 +86,7 @@ instance SymanticsG R where
   data GBKeySequence R a where
     GBKeySequenceRUnit :: GBKeySequence R ()
     GBKeySequenceRNext ::
-      GRepr R a a (ConstK R) ->
+      GRepr R a (ConstK R) ->
       GBKeySequence R b ->
       GBKeySequence R (a, b)
 
